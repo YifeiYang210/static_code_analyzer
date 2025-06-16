@@ -84,7 +84,7 @@ def check_style_issues(file_path):
             stripped_line = line.strip()
 
             # Check for line length
-            if len(stripped_line) > 79:
+            if len(line) > 79:
                 issues.append("S001 Too long")
             
             # Check for indentation not being a multiple of 4
@@ -122,8 +122,9 @@ def check_style_issues(file_path):
             
             # Print issues if any
             if issues:
-                print(f"Line {line_number}: " + ', '.join(issues))
+                for issue in sorted(set(issues)):
+                    print(f"Line {line_number}: {issue}")
 
 
 if __name__ == "__main__":
-    check_line_length(input().strip())
+    check_style_issues(input().strip())
