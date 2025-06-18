@@ -1,4 +1,33 @@
 # write your code here
+import sys
+import os
+
+def is_in_string(line, character):
+    """检查行中是否包含字符串中的注释符号"""
+    quote_char = None
+    escaped = False
+    
+    for i, char in enumerate(line):
+        if char == '\\':
+            escaped = not escaped  # 切换转义状态
+            continue
+            
+        if not escaped:
+            if quote_char is None and char in ('"', "'"):
+                # 进入引号区域
+                quote_char = char
+            elif char == quote_char:
+                # 离开引号区域
+                quote_char = None
+        
+        # 遇到注释符号且不在引号中
+        if char == character and quote_char is None:
+            return False  # 这是真正的注释符号
+            
+        escaped = False
+
+    return True  # 未找到未在字符串中的注释符号
+
 
 def check_line_length(file_path):
     """
@@ -31,7 +60,7 @@ def check_line_length(file_path):
                 print(f"Line {line_number}: S001 Too long")
 
 
-def check_style_issues(file_path):
+def check_style_issues(file_path, return_results=False):
     """
     (二) PEP8 更多风格
     让我们向程序添加更多检查。所有这些都与 PEP8 风格指南一致。
@@ -45,7 +74,7 @@ def check_style_issues(file_path):
     1.在 Python 中，每行代码都可以为空，包含语句和/或注释。
     因此，您可以通过检查代码相对于行中第一个 '#' 符号的位置来轻松确定代码的一部分是在注释还是语句中。
     2.如果一行多次包含相同的样式问题，则程序应仅打印一次信息。但是，如果一行具有多个具有不同类型错误代码的问题，则应将它们打印为排序列表。
-    3.为了简化任务，如果您的程序在字符串中发现一些误报样式问题，尤其是在多行（'''...'''） 中，我们认为这是可以接受的。
+    3.为了简化任务，如果您的程序在字符串中发现一些误报样式问题，尤其是在多行注释（'''...'''） 中可以不考虑，我们认为这是可以接受的。
     4.我们建议您将代码分成一组函数以避免混淆。
     再强调一次：
     1.包含 Python 代码的文件的路径是从标准输入中获得的。
@@ -81,6 +110,7 @@ def check_style_issues(file_path):
     with open(file_path, encoding='utf-8') as f:
         lines = f.readlines()
 
+    results = []
     blankline_count = 0
     for line_number, line in enumerate(lines, start=1):
         issues = []
@@ -95,22 +125,18 @@ def check_style_issues(file_path):
             issues.append("S002 Indentation is not a multiple of four")
         
         # Check for unnecessary semicolons
-        if stripped_line and ';' in stripped_line:
+        if stripped_line and ';' in stripped_line and not is_in_string(stripped_line, ';'):
             # Ignore semicolons in comments
             if '#' in stripped_line:
                 comment_index = stripped_line.index('#')
                 if ';' in stripped_line[:comment_index]:
                     issues.append("S003 Unnecessary semicolon")
-            # Ignore semicolons between strings
-            elif '"' in stripped_line or "'" in stripped_line:
-                string_delimiter = '"' if '"' in stripped_line else "'"
-                if ';' in stripped_line.split(string_delimiter, 1)[0]:
-                    issues.append("S003 Unnecessary semicolon")
             else:
                 issues.append("S003 Unnecessary semicolon")
         
         # Check for inline comments with less than two spaces before them
-        if '#' in stripped_line:
+        # must inline not standalone comment
+        if '#' in stripped_line and not is_in_string(stripped_line, '#') and not stripped_line.startswith('#'):
             comment_index = stripped_line.index('#')
             if stripped_line[(comment_index - 2):comment_index] != '  ':
                 issues.append("S004 At least two spaces required before inline comments")
@@ -131,10 +157,79 @@ def check_style_issues(file_path):
         
         # Print issues if any
         if issues:
-            for issue in sorted(set(issues)):
-                print(f"Line {line_number}: {issue}")
+            if return_results:
+                for issue in sorted(set(issues)):
+                    results.append((line_number, issue))
+            else:
+                for issue in sorted(set(issues)):  # 去重并排序
+                    print(f"Line {line_number}: {issue}")
+
+    if return_results:
+        return results
+
+
+def analyze_project():
+    """
+    (三) 分析项目
+    在此阶段，您需要改进程序，使其能够分析指定目录中的所有 Python 文件。
+    1.您还需要更改输入格式。程序必须将其作为命令行参数获取，而不是从标准输入中读取路径：
+    > python code_analyzer.py directory-or-file
+    2.输出格式也需要稍微更改。它应包含已分析文件的路径：
+    Path: Line X: Code Message 
+    3.所有输出行必须根据文件名、行号和问题代码按升序排序。
+
+    再强调一次：
+    1.如果一行多次包含相同的样式问题，则程序必须只打印一次信息。
+    2.如果一行有多个具有不同类型错误代码的问题，则应按升序打印它们。
+    3.我们建议您将程序代码分解为一组函数和类，以避免混淆。
+
+    示例 1. 仅指定一个文件作为输入：
+    > python code_analyzer.py /path/to/file/script.py
+    /path/to/file/script.py: Line 1: S004 At least two spaces required before inline comments
+    /path/to/file/script.py: Line 2: S003 Unnecessary semicolon
+    /path/to/file/script.py: Line 3: S001 Too long line
+    /path/to/file/script.py: Line 3: S003 Unnecessary semicolon
+    /path/to/file/script.py: Line 6: S001 Too long line
+    /path/to/file/script.py: Line 11: S006 More than two blank lines used before this line
+    /path/to/file/script.py: Line 13: S003 Unnecessary semicolon
+    /path/to/file/script.py: Line 13: S004 At least two spaces required before inline comments
+    /path/to/file/script.py: Line 13: S005 TODO found
+
+    示例 2. 输入路径是一个目录;输出应包含其中的所有 Python 文件：
+    > python code_analyzer.py /path/to/project
+    /path/to/project/__init__.py: Line 1: S001 Too long line
+    /path/to/project/script1.py: Line 1: S004 At least two spaces required before inline comments
+    /path/to/project/script1.py: Line 2: S003 Unnecessary semicolon
+    /path/to/project/script2.py: Line 1: S004 At least two spaces required before inline comments
+    /path/to/project/script2.py: Line 3: S001 Too long line
+    /path/to/project/somedir/script.py: Line 3: S001 Too long line
+    /path/to/project/test.py: Line 3: Line 13: S003 Unnecessary semicolon
+    """
+    path = sys.argv[1]
+
+    if os.path.isfile(path):
+        results = check_style_issues(path, return_results=True)
+        if results:
+            for line_info, issue in results:
+                print(f"{path}: Line {line_info}: {issue}")
+    elif os.path.isdir(path):
+        directory = path
+        folder_results = []
+
+        for root, _, files in os.walk(directory):
+            for file in files:
+                if file.endswith('.py'):
+                    file_path = os.path.join(root, file)
+                    folder_results.append((file_path, check_style_issues(file_path, return_results=True)))
+
+        # Sort results by file path and line number
+        folder_results.sort(key=lambda x: (x[0], x[1]))
+
+        for file_path, results in folder_results:
+            for line_info, issue in results:
+                print(f"{file_path}: Line {line_info}: {issue}")
 
 
 if __name__ == "__main__":
-    check_style_issues(input().strip())
-    # check_style_issues('test.py')
+    analyze_project()
+
