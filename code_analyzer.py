@@ -78,53 +78,63 @@ def check_style_issues(file_path):
     Line 13: S004 At least two spaces required before inline comments
     Line 13: S005 TODO found
     """
-    with open(file_path, 'r') as file:
-        for line_number, line in enumerate(file, start=1):
-            issues = []
-            stripped_line = line.strip()
+    with open(file_path, encoding='utf-8') as f:
+        lines = f.readlines()
 
-            # Check for line length
-            if len(line) > 79:
-                issues.append("S001 Too long")
-            
-            # Check for indentation not being a multiple of 4
-            if stripped_line and (len(stripped_line) - len(stripped_line.lstrip())) % 4 != 0:
-                issues.append("S002 Indentation is not a multiple of four")
-            
-            # Check for unnecessary semicolons
-            if stripped_line and ';' in stripped_line:
-                # Ignore semicolons in comments
-                if '#' in stripped_line:
-                    comment_index = stripped_line.index('#')
-                    if ';' in stripped_line[:comment_index]:
-                        issues.append("S003 Unnecessary semicolon")
-                else:
+    blankline_count = 0
+    for line_number, line in enumerate(lines, start=1):
+        issues = []
+        stripped_line = line.strip()
+
+        # Check for line length
+        if len(line) > 79:
+            issues.append("S001 Too long")
+        
+        # Check for indentation not being a multiple of 4
+        if stripped_line and (len(stripped_line) - len(stripped_line.lstrip())) % 4 != 0:
+            issues.append("S002 Indentation is not a multiple of four")
+        
+        # Check for unnecessary semicolons
+        if stripped_line and ';' in stripped_line:
+            # Ignore semicolons in comments
+            if '#' in stripped_line:
+                comment_index = stripped_line.index('#')
+                if ';' in stripped_line[:comment_index]:
                     issues.append("S003 Unnecessary semicolon")
-            
-            # Check for inline comments with less than two spaces before them
-            if '#' in stripped_line:
-                comment_index = stripped_line.index('#')
-                if comment_index > 0 and stripped_line[comment_index - 1] != ' ':
-                    issues.append("S004 At least two spaces required before inline comments")
-            
-            # Check for TODO comments and ignore case
-            if '#' in stripped_line:
-                comment_index = stripped_line.index('#')
-                if 'todo' in stripped_line[comment_index + 1:].lower():
-                    issues.append("S005 TODO found")
-            
-            # Check for more than two blank lines before this line
-            if line_number > 1:
-                previous_lines = file.readlines()[:line_number - 1]
-                blank_lines = sum(1 for l in previous_lines if not l.strip())
-                if blank_lines > 2:
-                    issues.append("S006 More than two blank lines used before this line")
-            
-            # Print issues if any
-            if issues:
-                for issue in sorted(set(issues)):
-                    print(f"Line {line_number}: {issue}")
+            # Ignore semicolons between strings
+            elif '"' in stripped_line or "'" in stripped_line:
+                string_delimiter = '"' if '"' in stripped_line else "'"
+                if ';' in stripped_line.split(string_delimiter, 1)[0]:
+                    issues.append("S003 Unnecessary semicolon")
+            else:
+                issues.append("S003 Unnecessary semicolon")
+        
+        # Check for inline comments with less than two spaces before them
+        if '#' in stripped_line:
+            comment_index = stripped_line.index('#')
+            if stripped_line[(comment_index - 2):comment_index] != '  ':
+                issues.append("S004 At least two spaces required before inline comments")
+        
+        # Check for TODO comments and ignore case
+        if '#' in stripped_line:
+            comment_index = stripped_line.index('#')
+            if 'todo' in stripped_line[comment_index + 1:].lower():
+                issues.append("S005 TODO found")
+        
+        # Check for more than two blank lines before this line
+        if not stripped_line:
+            blankline_count += 1
+        else:
+            if blankline_count > 2:
+                issues.append('S006 More than two blank lines used before this line')
+            blankline_count = 0  # 重置
+        
+        # Print issues if any
+        if issues:
+            for issue in sorted(set(issues)):
+                print(f"Line {line_number}: {issue}")
 
 
 if __name__ == "__main__":
     check_style_issues(input().strip())
+    # check_style_issues('test.py')
