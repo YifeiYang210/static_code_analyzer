@@ -1,13 +1,16 @@
-print('What\'s your name?') # reading an input
-name = input();
-print(f'Hello, {name}');  # here is an obvious comment: this prints a greeting with a name
+    class  Person:
+        pass
 
+    class user:
 
-very_big_number = 11_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000
-print(very_big_number)
+        def __init__(self, login: str, password: str):
+            self.login = login
+            self.password = password
 
+        @staticmethod
+        def _print1():
+            print('q')
 
-
-def some_fun():
-    print('NO TODO HERE;;')
-    pass; # Todo something
+        @staticmethod
+        def Print2():
+            print('q')

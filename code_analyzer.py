@@ -1,6 +1,7 @@
 # write your code here
 import sys
 import os
+import re
 
 def is_in_string(line, character):
     """检查行中是否包含字符串中的注释符号"""
@@ -107,6 +108,59 @@ def check_style_issues(file_path, return_results=False):
     Line 13: S004 At least two spaces required before inline comments
     Line 13: S005 TODO found
     """
+    """
+    (四) 命名应遵循PEP样式指南
+    在 Python 中，基本要求是对函数名称使用 snake_case，对类名称使用 CamelCase。
+    此外，构造名称和对象名称之间应只有一个空格。
+    查看有关正则表达式的 Python 教程 ：它们将帮助您实现检查。
+    在这个阶段，我们需要向程序添加三个新的检查：
+    [S007] def 或 class 等构造名称后有太多空格;
+    [S008] 类名 class_name 应该用 CamelCase 编写;
+    [S009] 函数名 function_name 应该用 snake_case 编写。
+    请注意：
+    1.函数名称可以以下划线（__fun、__init__）开头或结尾.
+    2.为了简化任务，我们将假设类的编写始终如以下示例所示
+    # a simple class
+    class MyClass:
+        pass
+
+    # a class based on inheritance
+    class MyClass(AnotherClass):
+        pass
+
+    实际上，可以这样声明一个类：
+    class \
+            S:
+        pass
+    但是，由于它不是声明类的常用方法，因此您可以忽略它。
+
+    3.另一个假设是函数总是像这样声明的：
+    def do_magic():
+        pass
+
+    下面是一个输入示例：
+    class  Person:
+        pass
+
+    class user:
+
+        def __init__(self, login: str, password: str):
+            self.login = login
+            self.password = password
+
+        @staticmethod
+        def _print1():
+            print('q')
+
+        @staticmethod
+        def Print2():
+            print('q')
+
+    此代码的预期输出为：
+    /path/to/file/script.py: Line 1: S007 Too many spaces after 'class'
+    /path/to/file/script.py: Line 4: S008 Class name 'user' should use CamelCase
+    /path/to/file/script.py: Line 15: S009 Function name 'Print2' should use snake_case
+    """
     with open(file_path, encoding='utf-8') as f:
         lines = f.readlines()
 
@@ -154,6 +208,26 @@ def check_style_issues(file_path, return_results=False):
             if blankline_count > 2:
                 issues.append('S006 More than two blank lines used before this line')
             blankline_count = 0  # 重置
+        
+        kw_match = re.match(r'^(\s*)(def|class)(\s+)([A-Za-z_][A-Za-z0-9_]*)', line)
+        if kw_match:
+            leading_ws, keyword, gap, name = kw_match.groups()
+
+            # S007: The number of spaces after the keyword must be 1
+            if len(gap) > 1:
+                issues.append("S007 Too many spaces after 'class' or 'def'")
+
+            # S008: The class name must be CamelCase (capitalized first letter, no underline)
+            if keyword == 'class':
+                if not re.fullmatch(r'[A-Z][a-zA-Z0-9]*', name):
+                    issues.append(f"S008 Class name '{name}' should use CamelCase")
+            # S009: The function name must be snake_case (allowing single underscore or dunder before/after)
+                #   1. 允许形如 __init__ / _private / public_
+                #   2. 其余必须全部小写字母、数字、下划线
+            else:  # keyword == 'def'
+                if not re.fullmatch(r'(_{0,2}[a-z][a-z0-9_]*_{0,2})', name):
+                    issues.append(f"S009 Function name '{name}' should use snake_case")
+        
         
         # Print issues if any
         if issues:
