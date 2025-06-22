@@ -121,7 +121,7 @@ def check_style_issues(file_path, return_results=False):
             issues.append("S001 Too long")
         
         # Check for indentation not being a multiple of 4
-        if stripped_line and (len(stripped_line) - len(stripped_line.lstrip())) % 4 != 0:
+        if stripped_line and (len(line) - len(line.lstrip())) % 4 != 0:
             issues.append("S002 Indentation is not a multiple of four")
         
         # Check for unnecessary semicolons
