@@ -2,6 +2,7 @@
 import sys
 import os
 import re
+import ast
 
 def is_in_string(line, character):
     """检查行中是否包含字符串中的注释符号"""
@@ -161,8 +162,165 @@ def check_style_issues(file_path, return_results=False):
     /path/to/file/script.py: Line 4: S008 Class name 'user' should use CamelCase
     /path/to/file/script.py: Line 15: S009 Function name 'Print2' should use snake_case
     """
+    """
+    （五）分析参数和变量
+    ast 模块还包含许多表示 Python 语法的不同元素的类。
+    例如，类 FunctionDef 是树的一个节点，表示代码中某个函数的定义，
+    类 arguments 表示函数的参数，类 Assign 表示一个表达式，其中的值被分配给某个变量。
+    您可以使用所有这些（和其他）类来查找要检查正确性的代码（变量名称等）的位置。
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            function_name = node.name
+            # check whether the function's name is written in camel_case
+            pass
+
+    在这个最后阶段，你需要改进你的程序，检查函数参数的所有名称以及局部变量是否满足 PEP8 的要求。
+    程序不得强制在函数之外（例如，在模块或类中）使用变量的名称。
+    最方便的方法是使用 ast 模块中的抽象语法树 （AST）。
+    此外，您的程序必须检查给定的代码是否不使用可变值（列表、字典和集合）作为默认参数，以避免程序中出现错误。
+    您需要向分析器添加三个新检查：
+    [S010] 参数名称 arg_name 应以 snake_case 编写;
+    [S011] 变量 var_name 应该用 snake_case 编写;
+    [S012] 默认参数值为 mutable。
+
+    1.函数名称以及函数体中的变量名称应以 snake_case 书写。
+    但是，只有在定义了函数时，才应输出无效函数名称的错误消息。
+    仅当为该变量分配了值时，才应输出无效变量名称的错误消息，而不是在代码中进一步使用此变量时输出。
+
+    2.为了简化任务，你只需要检查可变值是否直接赋值给一个参数：
+    def fun1(test=[]):  # default argument value is mutable
+        pass
+        
+    def fun2(test=get_value()):  # you can skip this case to simplify the problem
+        pass
+        
+    3.如果一个函数包含多个可变参数，则此函数的消息应该只输出一次。
+    4.如果变量和参数名称是用 snake_case 编写的，则假定它们有效。初始下划线 （_） 也是可以接受的。
+
+    下面是一个输入示例：
+    CONSTANT = 10
+    names = ['John', 'Lora', 'Paul']
+
+
+    def fun1(S=5, test=[]):  # default argument value is mutable
+        VARIABLE = 10
+        string = 'string'
+        print(VARIABLE)
+
+    /path/to/file/script.py: Line 5: S010 Argument name 'S' should be snake_case
+    /path/to/file/script.py: Line 5: S012 Default argument value is mutable
+    /path/to/file/script.py: Line 6: S011 Variable 'VARIABLE' in function should be snake_case
+    请注意，不会打印 print（VARIABLE） 行的消息，因为它已经输出到第 6 行，其中变量 VARIABLE 被分配了一个值。
+    """
     with open(file_path, encoding='utf-8') as f:
         lines = f.readlines()
+
+    # Construct snake_case (allowing double underscores before/after)
+    snake_re = re.compile(r'^_{0,2}[a-z][a-z0-9_]*_{0,2}$')
+    source_code = ''.join(lines)
+    ast_issues: dict[int, list[str]] = {}
+
+    # Help function: recursively extract variable names from the assignment target
+    def _extract_names(target):
+        if isinstance(target, ast.Name):
+            return [target.id]
+        if isinstance(target, (ast.Tuple, ast.List)):
+            names = []
+            for elt in target.elts:
+                names.extend(_extract_names(elt))
+            return names
+        return []
+    
+    try:
+        tree = ast.parse(source_code)
+    except SyntaxError:
+        tree = None
+    
+    if tree:
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                # ---------- S010：arg_name should be snake_case ----------
+                """
+                def fn(a, b=1, /, c, *args, d, e=2, **kwargs)
+                posonlyargs: [a, b]  仅限位置参数 (/ 左侧, Python3.8+)
+                args: [c]            标准位置参数 (位于 / 和 * 之间, 或没有特殊符号)
+                vararg: args         关键字参数 (* 右侧)
+                kwonlyargs: [d, e]   *args (如果存在)
+                kwarg: kwargs        **kwargs (如果存在)
+                """ 
+                all_args = (
+                    node.args.posonlyargs +
+                    node.args.args +
+                    node.args.kwonlyargs
+                )
+                # *arg / **kwarg
+                if node.args.vararg:
+                    all_args.append(node.args.vararg)
+                if node.args.kwarg:
+                    all_args.append(node.args.kwarg)
+
+                for arg in all_args:
+                    if not snake_re.fullmatch(arg.arg):
+                        ast_issues.setdefault(arg.lineno, []).append(
+                            f"S010 Argument name '{arg.arg}' should be snake_case"
+                        )
+
+                # ---------- S012：可变默认值 ----------
+                mutable_found = any(
+                    isinstance(d, (ast.List, ast.Dict, ast.Set))
+                    for d in (node.args.defaults + node.args.kw_defaults)
+                    if d is not None      # kw_defaults 可含 None
+                )
+                if mutable_found:
+                    ast_issues.setdefault(node.lineno, []).append(
+                        "S012 Default argument value is mutable"
+                    )
+
+                # ---------- S011：局部变量名var_name should be snake_case ----------
+                reported_vars = set()
+                for inner in ast.walk(node):
+                    """
+                    ast.Assign: 用于标准赋值，可以同时给多个目标赋值（包括元组解包）。
+                    ast.AnnAssign: 用于带类型注解的赋值，只能给单个目标赋值，可以有初始值也可以没有。
+                    ast.AugAssign: 用于增强赋值（如+=），只能给单个目标赋值。
+                    a = 1
+                    b: int = 2
+                    c += 3
+                    对应 AST 结构
+                    Module(
+                        body=[
+                            Assign(targets=[Name(id='a')], value=Constant(value=1)),
+                            AnnAssign(
+                                target=Name(id='b'),
+                                annotation=Name(id='int'),
+                                value=Constant(value=2),
+                                simple=1
+                            ),
+                            AugAssign(
+                                target=Name(id='c'),
+                                op=Add(),
+                                value=Constant(value=3)
+                            )
+                        ]
+                    )
+                    """
+                    if isinstance(inner, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                        # 获取所有赋值目标
+                        targets = []
+                        if isinstance(inner, ast.Assign):
+                            targets = inner.targets
+                        else:  # AnnAssign / AugAssign
+                            targets = [inner.target]  # 单个节点属性转化为列表，兼容上面可多个目标赋值
+
+                        for tgt in targets:
+                            for var_name in _extract_names(tgt):
+                                if (var_name not in reported_vars and
+                                        not snake_re.fullmatch(var_name)):
+                                    ast_issues.setdefault(inner.lineno, []).append(
+                                        f"S011 Variable '{var_name}' in function should be snake_case"
+                                    )
+                                    reported_vars.add(var_name)
 
     results = []
     blankline_count = 0
@@ -221,14 +379,16 @@ def check_style_issues(file_path, return_results=False):
             if keyword == 'class':
                 if not re.fullmatch(r'[A-Z][a-zA-Z0-9]*', name):
                     issues.append(f"S008 Class name '{name}' should use CamelCase")
-            # S009: The function name must be snake_case (allowing single underscore or dunder before/after)
-                #   1. 允许形如 __init__ / _private / public_
-                #   2. 其余必须全部小写字母、数字、下划线
+            # S009: The function name must be snake_case
+                #   1. allow __init__ / _private / public_
+                #   2. others must be logit, _, a-z
             else:  # keyword == 'def'
                 if not re.fullmatch(r'(_{0,2}[a-z][a-z0-9_]*_{0,2})', name):
                     issues.append(f"S009 Function name '{name}' should use snake_case")
         
-        
+        # Check for AST issues
+        issues.extend(ast_issues.get(line_number, []))
+
         # Print issues if any
         if issues:
             if return_results:
